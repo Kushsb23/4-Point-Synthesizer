@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Linkage Synthesizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            /* Light Mode Variables (Default 2D) */
+            --bg-body: #f8fafc;
+            --bg-container: #ffffff;
+            --bg-panel: #f1f5f9;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #cbd5e1;
+            --btn-disabled-bg: #e2e8f0;
+            --btn-disabled-text: #94a3b8;
+            --shadow-color: rgba(0,0,0,0.1);
+        }
+
+        body.dark-mode {
+            /* Dark Mode Variables (3D) */
+            --bg-body: #0f172a;
+            --bg-container: #1e293b;
+            --bg-panel: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #475569;
+            --btn-disabled-bg: #475569;
+            --btn-disabled-text: #94a3b8;
+            --shadow-color: rgba(0,0,0,0.6);
+        }
+
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: var(--bg-body); 
+            color: var(--text-main); 
+            margin: 0; padding: 20px; 
+            display: flex; flex-direction: column; align-items: center; 
+            transition: background 0.3s, color 0.3s; 
+        }
+        
+        .container { 
+            background: var(--bg-container); 
+            padding: 25px; border-radius: 12px; 
+            box-shadow: 0 10px 40px var(--shadow-color); 
+            display: flex; flex-direction: row; gap: 20px; align-items: flex-start; max-width: 1400px; 
+            transition: background 0.3s, box-shadow 0.3s; 
+        }
+        
+        .view-container { 
+            position: relative; width: 650px; height: 550px; 
+            background: #ffffff; border-radius: 8px; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.1); overflow: hidden; 
+        }
+        
+        canvas { position: absolute; top: 0; left: 0; cursor: crosshair; touch-action: none; }
+        
+        #container3d { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            cursor: grab; display: none; background: #0f172a; border-radius: 8px; overflow: hidden; 
+        }
+        
+        .panel { 
+            background: var(--bg-panel); padding: 20px; border-radius: 8px; 
+            width: 280px; display: flex; flex-direction: column; gap: 15px; 
+            transition: background 0.3s; 
+        }
+        
+        button { 
+            padding: 10px 12px; font-size: 14px; font-weight: bold; border: none; 
+            border-radius: 6px; cursor: pointer; transition: background 0.2s, color 0.2s; 
+        }
+        
+        .btn-success { background: #10b981; color: white; }
+        #play { background: #3b82f6; color: white; padding: 12px; font-size: 15px;}
+        #optimize { background: #8b5cf6; color: white; padding: 12px; font-size: 15px;}
+        #autoScale { background: #f97316; color: white; padding: 12px; font-size: 15px;}
+        #reset { background: #ef4444; color: white; padding: 12px; font-size: 15px;}
+        
+        button:disabled { 
+            background: var(--btn-disabled-bg) !important; 
+            color: var(--btn-disabled-text) !important; 
+            cursor: not-allowed; 
+        }
+        
+        .status { margin-top: 10px; font-size: 14px; font-weight: bold; text-align: center; height: 20px;}
+        
+        .results-header { 
+            font-size: 15px; font-weight: bold; color: #38bdf8; 
+            border-bottom: 1px solid var(--border-color); 
+            padding-bottom: 5px; margin-bottom: 5px; transition: border-color 0.3s;
+        }
+        
+        .coord-block { 
+            font-family: monospace; font-size: 13px; color: var(--text-main); 
+            line-height: 1.6; transition: color 0.3s;
+        }
+        
+        .live-val { color: #f59e0b; font-weight: bold; }
+        
+        .slider-group { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+        .slider-group label { 
+            font-size: 13px; font-weight: bold; color: var(--text-muted); 
+            display: flex; justify-content: space-between; align-items: center; 
+            transition: color 0.3s;
+        }
+        .slider-group span { color: var(--text-main); transition: color 0.3s; }
+        
+        input[type=range] { width: 100%; accent-color: #3b82f6; cursor: ew-resize; }
+        input[type=checkbox] { width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer; margin: 0; }
+
+        /* Sliding Toggle Styles */
+        .toggle-container { opacity: 1; transition: opacity 0.2s; margin-bottom: 5px; }
+        .toggle-container.disabled { opacity: 0.5; pointer-events: none; }
+        .toggle-track { 
+            position: relative; background: var(--border-color); border-radius: 8px; 
+            display: flex; width: 100%; height: 42px; cursor: pointer; overflow: hidden; 
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); transition: background 0.3s;
+        }
+        .toggle-slider { 
+            position: absolute; top: 3px; left: 3px; width: calc(50% - 3px); height: 36px; 
+            background: #10b981; border-radius: 6px; 
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s; z-index: 1; 
+        }
+        .toggle-slider.is-right { transform: translateX(100%); background: #3b82f6; }
+        .toggle-option { 
+            flex: 1; display: flex; align-items: center; justify-content: center; 
+            font-size: 14px; font-weight: bold; color: var(--text-muted); 
+            z-index: 2; transition: color 0.3s; user-select: none; 
+        }
+        .toggle-option.active { color: white; }
+        body.dark-mode .toggle-option:not(.active) { color: #94a3b8; }
+
+        .g-step { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; display: none; flex-direction: column; gap: 8px;}
+        .g-step.active { display: flex; }
+        .g-step strong { color: #38bdf8; }
+        
+        /* Circuit Defect Configuration Toggle (2/3 Scale) */
+        #configToggleContainer {
+            display: none; position: absolute; bottom: 20px; left: 20px; 
+            background: rgba(30, 41, 59, 0.95); padding: 10px; border-radius: 8px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4); z-index: 10; border: 1px solid #475569;
+            width: 140px;
+        }
+        .config-title { font-size: 11px; color: #f8fafc; margin-bottom: 6px; font-weight: bold; text-align: center; }
+        .config-track { 
+            position: relative; background: var(--border-color); border-radius: 6px; 
+            display: flex; width: 100%; height: 28px; cursor: pointer; overflow: hidden; 
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); transition: background 0.3s;
+        }
+        .config-slider { 
+            position: absolute; top: 2px; left: 2px; width: calc(50% - 2px); height: 24px; 
+            background: #3b82f6; border-radius: 4px; 
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s; z-index: 1; 
+        }
+        .config-slider.is-right { transform: translateX(100%); background: #f59e0b; }
+        .config-option { 
+            flex: 1; display: flex; align-items: center; justify-content: center; 
+            font-size: 10px; font-weight: bold; color: var(--text-muted); 
+            z-index: 2; transition: color 0.3s; user-select: none; 
+        }
+        .config-option.active { color: white; }
+    </style>
+</head>
+<body>
+    <h2 style="margin-top: 0;">Linkage Synthesizer</h2>
+    
+    <div class="container">
+        <div class="panel">
+            
+            <div class="toggle-container" id="synthToggleContainer">
+                <div class="toggle-track" id="synthToggleTrack">
+                    <div class="toggle-slider" id="synthToggleSlider"></div>
+                    <div class="toggle-option active" id="optAnalytic">Analytical</div>
+                    <div class="toggle-option" id="optGraphic">Graphical</div>
+                </div>
+            </div>
+
+            <div class="results-header" style="margin-top: 5px;">Target Coordinates</div>
+            <div id="coord-targets" class="coord-block">
+                P1: --<br>P2: --<br>P3: --<br>P4: --
+            </div>
+            
+            <div id="analytical-ui" style="display: flex; flex-direction: column; gap: 15px;">
+                <div>
+                    <div class="results-header" style="margin-top: 10px;">Ground Hinges</div>
+                    <div id="coord-ground" class="coord-block">HC: --<br>HR: --</div>
+                </div>
+                <div>
+                    <div class="results-header">Linkage Properties</div>
+                    <div id="linkage-props" class="coord-block">
+                        Ground: --<br>Coupler: --<br>Driving: --<br>Driven: --<br>Grashof: --
+                    </div>
+                </div>
+                <div>
+                    <div class="results-header">Live Mechanism</div>
+                    <div id="coord-live" class="coord-block">
+                        A (Rocker): <span class="live-val">--</span><br>B (Crank): <span class="live-val">--</span>
+                    </div>
+                </div>
+                <div>
+                    <div class="results-header">Optimization Results</div>
+                    <div id="coord-error" class="coord-block">
+                        <span id="awaiting-text" style="color: var(--text-muted); font-style: italic;">Awaiting Synthesis...</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="graphical-ui" style="display: none; flex-direction: column;">
+                <div class="results-header" style="margin-top: 10px;">Geometric Construction</div>
+                
+                <div class="g-step active" id="g-step-1">
+                    <span><strong>Step 1:</strong> Define 4 points on the canvas, then select any 2 target points to form a midnormal.</span>
+                </div>
+                <div class="g-step" id="g-step-2">
+                    <span><strong>Step 2:</strong> Hover your mouse to snap to the midnormal. Click to lock <strong style="color:#f59e0b">HR</strong>.</span>
+                </div>
+                <div class="g-step" id="g-step-3">
+                    <span><strong>Step 3:</strong> Adjust R and r. The system will automatically scan for the ideal <strong style="color:#10b981">HC (Green)</strong>. If found, click it to lock.</span>
+                    <label style="font-size: 12px; color: var(--text-muted); margin-top:5px;">Outer Radius R</label>
+                    <input type="range" id="gRadiusR" min="10" max="800" value="150">
+                    <label style="font-size: 12px; color: var(--text-muted);">Inner Radius r</label>
+                    <input type="range" id="gRadius_r" min="10" max="800" value="50">
+                </div>
+                <div class="g-step" id="g-step-4">
+                    <span><strong>Step 4:</strong> Review geometric congruence and finalize linkage.</span>
+                    <button class="btn-success" id="btnGenerateGraphical">Generate Mechanism</button>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; align-items: center;">
+            <div class="view-container">
+                <canvas id="canvas" width="650" height="550"></canvas>
+                <div id="container3d"></div>
+                
+                <div id="configToggleContainer">
+                    <div class="config-title">Circuit Defect Detected</div>
+                    <div class="config-track" id="configToggleTrack">
+                        <div class="config-slider" id="configToggleSlider"></div>
+                        <div class="config-option active" id="optConfig1">Config 1</div>
+                        <div class="config-option" id="optConfig2">Config 2</div>
+                    </div>
+                </div>
+            </div>
+            <div id="status" class="status" style="color: #38bdf8;">Click 4 points to define the path.</div>
+        </div>
+        
+        <div class="panel">
+            <div class="toggle-container disabled" id="viewToggleContainer">
+                <div class="toggle-track" id="viewToggleTrack">
+                    <div class="toggle-slider" id="viewToggleSlider"></div>
+                    <div class="toggle-option active" id="opt2D">2D View</div>
+                    <div class="toggle-option" id="opt3D">3D View</div>
+                </div>
+            </div>
+
+            <div class="slider-group">
+                <label>Animation Speed <span id="speedVal">0.4x</span></label>
+                <input type="range" id="animSpeed" min="0.1" max="3.0" step="0.1" value="0.4">
+            </div>
+            <div class="slider-group">
+                <label>Zoom <span id="zoomVal">100%</span></label>
+                <input type="range" id="zoomSlider" min="0.2" max="4" step="0.1" value="1">
+            </div>
+            
+            <div class="slider-group" style="margin-top: 10px; padding-top: 15px; border-top: 1px solid var(--border-color);">
+                <label style="cursor: pointer;">Show Path Curve <input type="checkbox" id="showPath" checked></label>
+                <label style="cursor: pointer; margin-top: 5px;">Show Labels <input type="checkbox" id="showLabels" checked></label>
+                <label style="cursor: pointer; margin-top: 5px;">Show Crank Tracing <input type="checkbox" id="showCrankTracing" checked></label>
+                <label style="cursor: pointer; margin-top: 5px;">Show Rocker Tracing <input type="checkbox" id="showRockerTracing" checked></label>
+            </div>
+            
+            <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <button id="play" disabled>Play Animation</button>
+                <button id="optimize" disabled>Run Synthesizer</button>
+                <button id="autoScale" disabled>Auto-Scale & Center</button>
+                <button id="reset">Reset Canvas</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // CORE MATH & WORKER
+        // ============================================================================
+        const workerScript = `
+        function solveDyad4Pos_fast(d2r, d2i, d3r, d3i, d4r, d4i, t2, t3, t4, f2, rootSign, out) {
+            const e2r = Math.cos(t2), e2i = Math.sin(t2); const e3r = Math.cos(t3), e3i = Math.sin(t3);
+            const e4r = Math.cos(t4), e4i = Math.sin(t4); const ef2r = Math.cos(f2), ef2i = Math.sin(f2);
+            const a2r = e2r-1, a2i = e2i; const a3r = e3r-1, a3i = e3i; const a4r = e4r-1, a4i = e4i; const af2r = ef2r-1, af2i = ef2i;
+            const D2r = d3r*a4r - d3i*a4i - (d4r*a3r - d4i*a3i); const D2i = d3r*a4i + d3i*a4r - (d4r*a3i + d4i*a3r);
+            const D3r = d4r*a2r - d4i*a2i - (d2r*a4r - d2i*a4i); const D3i = d4r*a2i + d4i*a2r - (d2r*a4i + d2i*a4r);
+            const D4r = d2r*a3r - d2i*a3i - (d3r*a2r - d3i*a2i); const D4i = d2r*a3i + d2i*a3r - (d3r*a2i + d3i*a2r);
+            const D1r = af2r*D2r - af2i*D2i - D3r - D4r; const D1i = af2r*D2i + af2i*D2r - D3i - D4i;
+            const A = D1r*D3r + D1i*D3i; const B = D1r*D3i - D1i*D3r; 
+            const C_val = D3r*D3r + D3i*D3i + D1r*D1r + D1i*D1i - (D4r*D4r + D4i*D4i);
+            const disc = 4*A*A + 4*B*B - C_val*C_val; if (disc < 0) return false;
+            const t = (2*B + rootSign * Math.sqrt(disc)) / (C_val - 2*A); const f3 = 2 * Math.atan(t);
+            const e_f3r = Math.cos(f3), e_f3i = Math.sin(f3); const a_f3r = e_f3r-1, a_f3i = e_f3i;
+            const numr = e_f3r*D3r - e_f3i*D3i + D1r; const numi = e_f3r*D3i + e_f3i*D3r + D1i;
+            const f4 = Math.atan2(numi, numr) - Math.atan2(-D4i, -D4r);
+            const detr = a2r*a_f3r - a2i*a_f3i - (af2r*a3r - af2i*a3i); const deti = a2r*a_f3i + a2i*a_f3r - (af2r*a3i + af2i*a3r);
+            const detMagSq = detr*detr + deti*deti; if (detMagSq < 1e-10) return false;
+            const nr = d2r*a_f3r - d2i*a_f3i - (d3r*af2r - d3i*af2i); const ni = d2r*a_f3i + d2i*a_f3r - (d3r*af2i + d3i*af2r);
+            const n_coup_r = d3r*a2r - d3i*a2i - (d2r*a3r - d2i*a3i); const n_coup_i = d3r*a2i + d3i*a2r - (d2r*a3i + d2i*a3r);
+            out[0] = (nr*detr + ni*deti)/detMagSq; out[1] = (ni*detr - nr*deti)/detMagSq;
+            out[2] = (n_coup_r*detr + n_coup_i*deti)/detMagSq; out[3] = (n_coup_i*detr - n_coup_r*deti)/detMagSq;
+            out[4] = f3; out[5] = f4; return true;
+        }
+        function solveDyad3Pos_fast(d2r, d2i, d3r, d3i, t2, t3, g2, g3, out) {
+            const a2r = Math.cos(t2)-1, a2i = Math.sin(t2); const a3r = Math.cos(t3)-1, a3i = Math.sin(t3);
+            const b2r = Math.cos(g2)-1, b2i = Math.sin(g2); const b3r = Math.cos(g3)-1, b3i = Math.sin(g3);
+            const detr = a2r*b3r - a2i*b3i - (b2r*a3r - b2i*a3i); const deti = a2r*b3i + a2i*b3r - (b2r*a3i + b2i*a3r);
+            const detMagSq = detr*detr + deti*deti; if (detMagSq < 1e-8) return false;
+            const numW_r = d2r*b3r - d2i*b3i - (d3r*b2r - d3i*b2i); const numW_i = d2r*b3i + d2i*b3r - (d3r*b2i + d3i*b2r);
+            const numZ_r = d3r*a2r - d3i*a2i - (d2r*a3r - d2i*a3i); const numZ_i = d3r*a2i + d3i*a2r - (d2r*a3i + d2i*a3r);
+            out[0] = (numW_r*detr + numW_i*deti)/detMagSq; out[1] = (numW_i*detr - numW_r*deti)/detMagSq;
+            out[2] = (numZ_r*detr + numZ_i*deti)/detMagSq; out[3] = (numZ_i*detr - numZ_r*deti)/detMagSq; return true;
+        }
+        function getPos(mech, theta) {
+            const Bx = mech.HC.x + mech.L_crank * Math.cos(theta), By = mech.HC.y + mech.L_crank * Math.sin(theta);
+            const dx = mech.HR.x - Bx, dy = mech.HR.y - By, d = Math.sqrt(dx*dx + dy*dy);
+            if (d > mech.L_coupler + mech.L_rocker || d < Math.abs(mech.L_coupler - mech.L_rocker)) return null;
+            const a = (mech.L_coupler*mech.L_coupler - mech.L_rocker*mech.L_rocker + d*d) / (2 * d);
+            const h = Math.sqrt(Math.max(0, mech.L_coupler*mech.L_coupler - a*a));
+            const Ax = Bx + a*(dx/d) - mech.branch * h*(dy/d); const Ay = By + a*(dy/d) + mech.branch * h*(dx/d);
+            const theta3 = Math.atan2(Ay - By, Ax - Bx);
+            return { A: {x: Ax, y: Ay}, B: {x: Bx, y: By}, P: {x: Bx + mech.rp * Math.cos(theta3 + mech.deltap), y: By + mech.rp * Math.sin(theta3 + mech.deltap)} };
+        }
+        function verifyCircuit4(mech, phi2, phi3, phi4, P1, P2, P3, P4) {
+            const th1 = mech.Z2_start_angle;
+            const pos1 = getPos(mech, th1), pos2 = getPos(mech, th1 + phi2);
+            const pos3 = getPos(mech, th1 + phi3), pos4 = getPos(mech, th1 + phi4);
+            if (!pos1 || !pos2 || !pos3 || !pos4) return false;
+            if (Math.hypot(pos1.P.x - P1.x, pos1.P.y - P1.y) > 1.5) return false;
+            if (Math.hypot(pos2.P.x - P2.x, pos2.P.y - P2.y) > 1.5) return false;
+            if (Math.hypot(pos3.P.x - P3.x, pos3.P.y - P3.y) > 1.5) return false;
+            if (Math.hypot(pos4.P.x - P4.x, pos4.P.y - P4.y) > 1.5) return false;
+            for (let i = 0; i <= 40; i++) { if (!getPos(mech, th1 + (phi4 * (i / 40)))) return false; } return true;
+        }
+        self.onmessage = function(e) {
+            const { P1, P2, P3, P4, iterations } = e.data;
+            const d2r = P2.x - P1.x, d2i = P2.y - P1.y; const d3r = P3.x - P1.x, d3i = P3.y - P1.y; const d4r = P4.x - P1.x, d4i = P4.y - P1.y;
+            const leftBuf = new Float64Array(6); const rightBuf = new Float64Array(6);
+            let champion = null, bestScore = Infinity, foundExact = false, fallbackError = Infinity;
+            for (let i = 0; i < iterations; i++) {
+                let p2 = (10 + Math.random() * 80) * Math.PI / 180, p3 = p2 + (10 + Math.random() * 80) * Math.PI / 180, p4 = p3 + (10 + Math.random() * 80) * Math.PI / 180;
+                let g2 = (Math.random() * 360 - 180) * Math.PI/180, s2 = (Math.random() * 360 - 180) * Math.PI/180;
+                let rootL = Math.random() > 0.5 ? 1 : -1, rootR = Math.random() > 0.5 ? 1 : -1;
+                if (!solveDyad4Pos_fast(d2r, d2i, d3r, d3i, d4r, d4i, p2, p3, p4, g2, rootL, leftBuf)) continue;
+                const f3 = leftBuf[4], f4 = leftBuf[5];
+                if (!solveDyad4Pos_fast(d2r, d2i, d3r, d3i, d4r, d4i, g2, f3, f4, s2, rootR, rightBuf)) continue;
+                const Z2r = leftBuf[0], Z2i = leftBuf[1], Z3r = leftBuf[2], Z3i = leftBuf[3];
+                const Z4r = rightBuf[0], Z4i = rightBuf[1], Z5r = rightBuf[2], Z5i = rightBuf[3];
+                const magZ2 = Math.sqrt(Z2r*Z2r + Z2i*Z2i), magZ4 = Math.sqrt(Z4r*Z4r + Z4i*Z4i), magZ3Z5 = Math.hypot(Z3r - Z5r, Z3i - Z5i);
+                if (Math.max(magZ2, magZ4, magZ3Z5) > 2500 || Math.max(magZ2, magZ4, magZ3Z5) < 2) continue;
+                const Z0r = P1.x - Z2r - Z3r, Z0i = P1.y - Z2i - Z3i; const Z0pr = P1.x - Z4r - Z5r, Z0pi = P1.y - Z4i - Z5i;
+                const l_ground = Math.hypot(Z0r - Z0pr, Z0i - Z0pi), L_coupler = Math.hypot(Z0pr+Z4r - (Z0r+Z2r), Z0pi+Z4i - (Z0i+Z2i));
+                const score = Math.max(magZ2, magZ4, L_coupler, l_ground) / Math.min(magZ2, magZ4, L_coupler, l_ground);
+                if (score > 20 || score >= bestScore) continue;
+                let mech = { HC: {x: Z0r, y: Z0i}, HR: {x: Z0pr, y: Z0pi}, L_crank: magZ2, L_rocker: magZ4, L_coupler: L_coupler, Z2_start_angle: Math.atan2(Z2i, Z2r), B0: {x: Z0r + Z2r, y: Z0i + Z2i}, A0: {x: Z0pr + Z4r, y: Z0pi + Z4i}, P0: {x: P1.x, y: P1.y} };
+                mech.rp = Math.hypot(mech.P0.x - mech.B0.x, mech.P0.y - mech.B0.y);
+                mech.deltap = Math.atan2(mech.P0.y - mech.B0.y, mech.P0.x - mech.B0.x) - Math.atan2(mech.A0.y - mech.B0.y, mech.A0.x - mech.B0.x);
+                const dx = mech.HR.x - mech.B0.x, dy = mech.HR.y - mech.B0.y, d = Math.sqrt(dx*dx + dy*dy);
+                const a = (mech.L_coupler**2 - mech.L_rocker**2 + d**2) / (2 * d), h = Math.sqrt(Math.max(0, mech.L_coupler**2 - a**2));
+                const Ax1 = mech.B0.x + a*(dx/d) - 1*h*(dy/d), Ay1 = mech.B0.y + a*(dy/d) + 1*h*(dx/d);
+                mech.branch = Math.hypot(Ax1 - mech.A0.x, Ay1 - mech.A0.y) < 2.0 ? 1 : -1; 
+                if (verifyCircuit4(mech, p2, p3, p4, P1, P2, P3, P4)) { bestScore = score; champion = mech; foundExact = true; }
+            }
+            if (!foundExact) {
+                for (let i = 0; i < iterations; i++) {
+                    let p2 = (10 + Math.random() * 160) * Math.PI / 180, p3 = p2 + (10 + Math.random() * 160) * Math.PI / 180;
+                    let g2 = (Math.random() * 360 - 180) * Math.PI/180, g3 = (Math.random() * 360 - 180) * Math.PI/180;
+                    let s2 = (Math.random() * 360 - 180) * Math.PI/180, s3 = (Math.random() * 360 - 180) * Math.PI/180;
+                    if (!solveDyad3Pos_fast(d2r, d2i, d3r, d3i, p2, p3, g2, g3, leftBuf)) continue;
+                    if (!solveDyad3Pos_fast(d2r, d2i, d3r, d3i, s2, s3, g2, g3, rightBuf)) continue;
+                    const Z2r = leftBuf[0], Z2i = leftBuf[1], Z3r = leftBuf[2], Z3i = leftBuf[3], Z4r = rightBuf[0], Z4i = rightBuf[1], Z5r = rightBuf[2], Z5i = rightBuf[3];
+                    const magZ2 = Math.sqrt(Z2r*Z2r + Z2i*Z2i), magZ4 = Math.sqrt(Z4r*Z4r + Z4i*Z4i), magZ3Z5 = Math.hypot(Z3r - Z5r, Z3i - Z5i);
+                    if (Math.max(magZ2, magZ4, magZ3Z5) > 2500 || Math.max(magZ2, magZ4, magZ3Z5) < 2) continue;
+                    const Z0r = P1.x - Z2r - Z3r, Z0i = P1.y - Z2i - Z3i, Z0pr = P1.x - Z4r - Z5r, Z0pi = P1.y - Z4i - Z5i;
+                    const l_ground = Math.hypot(Z0r - Z0pr, Z0i - Z0pi), L_coupler = Math.hypot(Z0pr+Z4r - (Z0r+Z2r), Z0pi+Z4i - (Z0i+Z2i));
+                    if (Math.max(magZ2, magZ4, L_coupler, l_ground) / Math.min(magZ2, magZ4, L_coupler, l_ground) > 20) continue;
+                    let mech = { HC: {x: Z0r, y: Z0i}, HR: {x: Z0pr, y: Z0pi}, L_crank: magZ2, L_rocker: magZ4, L_coupler: L_coupler, Z2_start_angle: Math.atan2(Z2i, Z2r), B0: {x: Z0r + Z2r, y: Z0i + Z2i}, A0: {x: Z0pr + Z4r, y: Z0pi + Z4i}, P0: {x: P1.x, y: P1.y} };
+                    mech.rp = Math.hypot(mech.P0.x - mech.B0.x, mech.P0.y - mech.B0.y);
+                    mech.deltap = Math.atan2(mech.P0.y - mech.B0.y, mech.P0.x - mech.B0.x) - Math.atan2(mech.A0.y - mech.B0.y, mech.A0.x - mech.B0.x);
+                    const dx = mech.HR.x - mech.B0.x, dy = mech.HR.y - mech.B0.y, d = Math.sqrt(dx*dx + dy*dy);
+                    const a = (mech.L_coupler**2 - mech.L_rocker**2 + d**2) / (2 * d), h = Math.sqrt(Math.max(0, mech.L_coupler**2 - a**2));
+                    const Ax1 = mech.B0.x + a*(dx/d) - 1*h*(dy/d), Ay1 = mech.B0.y + a*(dy/d) + 1*h*(dx/d);
+                    mech.branch = Math.hypot(Ax1 - mech.A0.x, Ay1 - mech.A0.y) < 2.0 ? 1 : -1; 
+                    if (!verifyCircuit4(mech, p2, p3, p3, P1, P2, P3, P3)) continue; 
+                    let minDistSq = Infinity;
+                    for(let th = 0; th < 360; th += 4) { 
+                        let pos = getPos(mech, th * Math.PI / 180);
+                        if (pos) { let dSq = (pos.P.x - P4.x)**2 + (pos.P.y - P4.y)**2; if (dSq < minDistSq) minDistSq = dSq; }
+                    }
+                    const error = Math.sqrt(minDistSq);
+                    if (error < fallbackError) { fallbackError = error; champion = mech; }
+                }
+            }
+            self.postMessage({ champion, bestScore, foundExact, fallbackError });
+        };`;
+        const blob = new Blob([workerScript], {type: 'application/javascript'});
+        const worker = new Worker(URL.createObjectURL(blob));
+
+        // ============================================================================
+        // SETUP & 3D PROCEDURAL GEOMETRY
+        // ============================================================================
+        function createLinkGeo(length, w, t, rHole) {
+            const shape = new THREE.Shape(), r = w/2;
+            shape.absarc(0, 0, r, Math.PI/2, Math.PI*1.5, false); shape.lineTo(length, -r);
+            shape.absarc(length, 0, r, -Math.PI/2, Math.PI/2, false); shape.lineTo(0, r);
+            const hole1 = new THREE.Path(); hole1.absarc(0, 0, rHole, 0, Math.PI*2, true); shape.holes.push(hole1);
+            const hole2 = new THREE.Path(); hole2.absarc(length, 0, rHole, 0, Math.PI*2, true); shape.holes.push(hole2);
+            const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: true, bevelSegments: 3, steps: 1, bevelSize: 1, bevelThickness: 1 });
+            geo.translate(-length/2, 0, -t/2); return geo;
+        }
+
+        const canvas = document.getElementById('canvas'); const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        
+        let targets = [], bestMech = null, isPlaying = false, currentTheta = 0, animDirection = 1;
+        let viewScale = 1, offsetX = 0, offsetY = 0, isPanning = false, startPanX = 0, startPanY = 0;
+        let currentMode = "NONE", is3DMode = false, isGraphicalMode = false;
+
+        let gState = 0; 
+        let gSelectedTargetIndices = []; 
+        let mouseGhostPoint = null;
+        let gHR = null, gR = 150, g_r = 50, gHC = null;
+        let gA_i = null, gA_j = null, gA_u = null, gA_v = null, gP = null, gQ = null, gB_i = null;
+        let suggestedHC = null, isHCValid = false, gBestParams = null, bestMechPreview = null;
+        
+        const container3d = document.getElementById('container3d');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, 650/550, 1, 20000); camera.position.set(325, 275, 900); camera.lookAt(325, 275, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(650, 550); renderer.setPixelRatio(window.devicePixelRatio);
+        container3d.appendChild(renderer.domElement);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7); dirLight.position.set(200, 200, 400); scene.add(dirLight);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3); dirLight2.position.set(-200, -200, 100); scene.add(dirLight2);
+
+        let orbitState = { isDown: false, lastX: 0, lastY: 0, theta: 0, phi: 0, radius: 900, targetX: 325, targetY: 275 };
+        renderer.domElement.addEventListener('mousedown', e => { orbitState.isDown = true; orbitState.lastX = e.clientX; orbitState.lastY = e.clientY; container3d.style.cursor = 'grabbing'; });
+        renderer.domElement.addEventListener('mouseup', () => { orbitState.isDown = false; container3d.style.cursor = 'grab'; });
+        renderer.domElement.addEventListener('mouseleave', () => { orbitState.isDown = false; container3d.style.cursor = 'grab'; });
+        renderer.domElement.addEventListener('mousemove', e => {
+            if (!orbitState.isDown) return;
+            orbitState.theta -= (e.clientX - orbitState.lastX) * 0.005; orbitState.phi = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, orbitState.phi + (e.clientY - orbitState.lastY) * 0.005));
+            orbitState.lastX = e.clientX; orbitState.lastY = e.clientY;
+        });
+        renderer.domElement.addEventListener('wheel', e => { e.preventDefault(); orbitState.radius = Math.max(100, Math.min(4000, orbitState.radius + e.deltaY * 1.2)); }, { passive: false });
+
+        const dummyGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+        const meshGround = new THREE.Mesh(dummyGeo, new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.3, roughness: 0.4 }));
+        const meshCrank = new THREE.Mesh(dummyGeo, new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.3, roughness: 0.4 }));
+        const meshRocker = new THREE.Mesh(dummyGeo, new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.3, roughness: 0.4 }));
+        const meshCoupler = new THREE.Mesh(dummyGeo, new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.3, roughness: 0.4 }));
+        const meshCouplerExt = new THREE.Mesh(dummyGeo, new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.3, roughness: 0.4 }));
+        const meshCouplerExt2 = new THREE.Mesh(dummyGeo, new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.3, roughness: 0.4 })); 
+        scene.add(meshGround, meshCrank, meshRocker, meshCoupler, meshCouplerExt, meshCouplerExt2);
+
+        const jointGeo = new THREE.CylinderGeometry(4.5, 4.5, 20, 32); jointGeo.rotateX(Math.PI / 2); 
+        const matJoint = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.7, roughness: 0.2 });
+        const jointHC = new THREE.Mesh(jointGeo, matJoint), jointHR = new THREE.Mesh(jointGeo, matJoint), jointA = new THREE.Mesh(jointGeo, matJoint), jointB = new THREE.Mesh(jointGeo, matJoint), jointP = new THREE.Mesh(jointGeo, matJoint); 
+        scene.add(jointHC, jointHR, jointA, jointB, jointP);
+
+        const pathGeo = new THREE.BufferGeometry().setFromPoints(Array(361).fill(new THREE.Vector3(0,0,0)));
+        const pathLine = new THREE.Line(pathGeo, new THREE.LineBasicMaterial({ color: 0x38bdf8, opacity: 0.5, transparent: true }));
+        scene.add(pathLine);
+        const targetMeshes = [new THREE.Mesh(new THREE.SphereGeometry(8,16,16), new THREE.MeshBasicMaterial({color:0x10b981})), new THREE.Mesh(new THREE.SphereGeometry(8,16,16), new THREE.MeshBasicMaterial({color:0x10b981})), new THREE.Mesh(new THREE.SphereGeometry(8,16,16), new THREE.MeshBasicMaterial({color:0x10b981})), new THREE.Mesh(new THREE.SphereGeometry(8,16,16), new THREE.MeshBasicMaterial({color:0x10b981}))];
+        targetMeshes.forEach(m => scene.add(m));
+
+        function update3DLink(mesh, x1, y1, x2, y2, z) {
+            const dx = x2 - x1, dy = -(y2 - y1), len = Math.hypot(dx, dy); if (len < 0.001) return;
+            mesh.position.set((x1 + x2)/2, -(y1 + y2)/2, z); mesh.rotation.set(0, 0, Math.atan2(dy, dx)); mesh.visible = true;
+        }
+
+        // ============================================================================
+        // TOGGLES & UI MANAGERS
+        // ============================================================================
+        const viewToggleTrack = document.getElementById('viewToggleTrack'), viewToggleSlider = document.getElementById('viewToggleSlider'), opt2D = document.getElementById('opt2D'), opt3D = document.getElementById('opt3D');
+        viewToggleTrack.onclick = function() {
+            if (!bestMech) return; is3DMode = !is3DMode;
+            if (is3DMode) {
+                document.body.classList.add('dark-mode'); viewToggleSlider.classList.add('is-right'); opt2D.classList.remove('active'); opt3D.classList.add('active');
+                canvas.style.display = "none"; container3d.style.display = "block";
+                orbitState.targetX = (bestMech.HC.x + bestMech.HR.x)/2; orbitState.targetY = (bestMech.HC.y + bestMech.HR.y)/2;
+                orbitState.radius = Math.max(300, Math.max(Math.abs(bestMech.HC.x - bestMech.HR.x), Math.abs(bestMech.HC.y - bestMech.HR.y), bestMech.L_crank*2, bestMech.L_rocker*2) * 2.5);
+                let pts = pathGeo.attributes.position;
+                for (let i = 0; i <= 360; i++) { const p = getPosUI(bestMech, i*Math.PI/180); if(p) pts.setXYZ(i, p.P.x, -p.P.y, 25); else pts.setXYZ(i, i>0?pts.getX(i-1):0, i>0?pts.getY(i-1):0, 25); }
+                pts.needsUpdate = true;
+            } else {
+                document.body.classList.remove('dark-mode'); viewToggleSlider.classList.remove('is-right'); opt3D.classList.remove('active'); opt2D.classList.add('active');
+                canvas.style.display = "block"; container3d.style.display = "none"; render();
+            }
+        };
+
+        const synthToggleTrack = document.getElementById('synthToggleTrack'), synthToggleSlider = document.getElementById('synthToggleSlider'), optAnalytic = document.getElementById('optAnalytic'), optGraphic = document.getElementById('optGraphic');
+        synthToggleTrack.onclick = function() {
+            if(is3DMode) viewToggleTrack.click();
+            isGraphicalMode = !isGraphicalMode;
+            document.getElementById('configToggleContainer').style.display = 'none';
+            
+            if (isGraphicalMode) {
+                synthToggleSlider.classList.add('is-right'); optAnalytic.classList.remove('active'); optGraphic.classList.add('active');
+                document.getElementById('analytical-ui').style.display = 'none'; document.getElementById('graphical-ui').style.display = 'flex';
+                document.getElementById('optimize').style.display = 'none';
+                
+                gState = targets.length === 4 ? 1 : 0; 
+                gSelectedTargetIndices = []; bestMech = null; bestMechPreview = null;
+                gHR = null; gHC = null; gA_i = null; gA_j = null;
+                mouseGhostPoint = null; isHCValid = false; gBestParams = null;
+                
+                setGStep(targets.length === 4 ? 1 : 0);
+            } else {
+                synthToggleSlider.classList.remove('is-right'); optGraphic.classList.remove('active'); optAnalytic.classList.add('active');
+                document.getElementById('analytical-ui').style.display = 'flex'; document.getElementById('graphical-ui').style.display = 'none';
+                document.getElementById('optimize').style.display = 'block';
+            }
+            render();
+        };
+
+        function setGStep(step) {
+            document.querySelectorAll('.g-step').forEach(el => el.classList.remove('active'));
+            if(step > 0 && step <= 6) document.getElementById('g-step-' + step).classList.add('active');
+            if(step === 1) statusEl.innerText = "Graphical Mode: Select 2 targets to start midnormal construction.";
+            if(step === 2) statusEl.innerText = "Hover to snap to midnormal. Click to lock HR.";
+            if(step === 3) statusEl.innerText = "Adjust R and r. System will scan for valid HC.";
+            if(step === 4) statusEl.innerText = "Construction geometrically valid! Generate mechanism.";
+        }
+
+        // ============================================================================
+        // ANALYTICAL LOGIC
+        // ============================================================================
+        function getPosUI(mech, theta) {
+            const Bx = mech.HC.x + mech.L_crank * Math.cos(theta), By = mech.HC.y + mech.L_crank * Math.sin(theta);
+            const dx = mech.HR.x - Bx, dy = mech.HR.y - By, d = Math.sqrt(dx*dx + dy*dy);
+            if (d > mech.L_coupler + mech.L_rocker + 1e-5 || d < Math.abs(mech.L_coupler - mech.L_rocker) - 1e-5) return null;
+            const a = (mech.L_coupler**2 - mech.L_rocker**2 + d**2) / (2 * d);
+            const h = Math.sqrt(Math.max(0, mech.L_coupler**2 - a**2));
+            const Ax = Bx + a*(dx/d) - mech.branch * h*(dy/d); const Ay = By + a*(dy/d) + mech.branch * h*(dx/d);
+            const theta3 = Math.atan2(Ay - By, Ax - Bx);
+            return { A: {x: Ax, y: Ay}, B: {x: Bx, y: By}, P: {x: Bx + mech.rp * Math.cos(theta3 + mech.deltap), y: By + mech.rp * Math.sin(theta3 + mech.deltap)} };
+        }
+
+        function getSweepFromGap(angles) {
+            if (angles.length < 2) return null;
+            let norm = angles.map(a => (a + 8 * Math.PI) % (2 * Math.PI)).sort((a,b) => a - b);
+            let maxGap = 0, gapStart = 0, gapEnd = 0;
+            for (let i = 0; i < norm.length; i++) {
+                let next = (i === norm.length - 1) ? norm[0] + 2*Math.PI : norm[i+1];
+                let gap = next - norm[i];
+                if (gap > maxGap) { maxGap = gap; gapStart = norm[i]; gapEnd = next % (2*Math.PI); }
+            }
+            if (maxGap < 0.1) return { isFull: true }; 
+            return { startAngle: gapEnd, endAngle: gapStart, isFull: false };
+        }
+
+        function runOptimizer() {
+            if (targets.length < 4) return;
+            const startTime = performance.now();
+            statusEl.innerText = "Processing 1,300,000 Iterations in Background Thread...";
+            statusEl.style.color = "#8b5cf6";
+            document.getElementById('optimize').disabled = true;
+            document.getElementById('coord-error').innerHTML = `<span id="awaiting-text" style="color: var(--text-muted); font-style: italic;">Synthesizing...</span>`;
+            document.getElementById('configToggleContainer').style.display = 'none';
+            
+            worker.postMessage({ P1: targets[0], P2: targets[1], P3: targets[2], P4: targets[3], iterations: 1300000 });
+            
+            worker.onmessage = function(e) {
+                const timeTaken = (performance.now() - startTime).toFixed(0);
+                const { champion, bestScore, foundExact, fallbackError } = e.data;
+                if (champion) {
+                    bestMech = champion;
+                    currentTheta = bestMech.Z2_start_angle;
+                    
+                    document.getElementById('play').disabled = false;
+                    document.getElementById('autoScale').disabled = false;
+                    document.getElementById('viewToggleContainer').classList.remove('disabled');
+                    
+                    document.getElementById('coord-ground').innerHTML = `HC: (${bestMech.HC.x.toFixed(1)}, ${bestMech.HC.y.toFixed(1)})<br>HR: (${bestMech.HR.x.toFixed(1)}, ${bestMech.HR.y.toFixed(1)})`;
+                    
+                    const l_ground = Math.hypot(bestMech.HC.x - bestMech.HR.x, bestMech.HC.y - bestMech.HR.y);
+                    const l_crank = bestMech.L_crank, l_rocker = bestMech.L_rocker, l_coupler = bestMech.L_coupler;
+                    const S = Math.min(l_crank, l_rocker, l_coupler, l_ground);
+                    const L = Math.max(l_crank, l_rocker, l_coupler, l_ground);
+                    const PQ = l_crank + l_rocker + l_coupler + l_ground - S - L;
+                    let grashof_type = "Non-Grashof";
+                    if (S + L <= PQ + 0.001) {
+                        if (S === l_ground) grashof_type = "Double Crank";
+                        else if (S === l_crank) grashof_type = "Crank-Rocker";
+                        else if (S === l_rocker) grashof_type = "Rocker-Crank";
+                        else grashof_type = "Double Rocker";
+                    }
+                    
+                    document.getElementById('linkage-props').innerHTML = `Ground: <span class="live-val">${l_ground.toFixed(1)}</span><br>Coupler: <span class="live-val">${l_coupler.toFixed(1)}</span><br>Driving: <span class="live-val">${l_crank.toFixed(1)}</span><br>Driven: <span class="live-val">${l_rocker.toFixed(1)}</span><br>Grashof: <span class="live-val" style="color:#8b5cf6">${grashof_type}</span>`;
+                    
+                    if (foundExact) {
+                        currentMode = "EXACT";
+                        statusEl.innerText = `Found Exact Solution in ${timeTaken}ms!`;
+                        statusEl.style.color = "#10b981";
+                        document.getElementById('coord-error').innerHTML = `Mode: <span style="color:#10b981; font-weight:bold;">Exact 4-Point</span><br>Compactness: <span class="live-val">${bestScore.toFixed(2)}</span>`;
+                    } else {
+                        currentMode = "FALLBACK";
+                        statusEl.innerText = `Exact Failed. Computed 1.3M Fallbacks in ${timeTaken}ms.`;
+                        statusEl.style.color = "#f59e0b";
+                        document.getElementById('coord-error').innerHTML = `Mode: <span style="color:#f59e0b; font-weight:bold;">3-Point Fallback</span><br>P4 Miss Distance: <span class="live-val">${fallbackError.toFixed(1)} px</span>`;
+                    }
+
+                    if (meshGround.geometry) meshGround.geometry.dispose();
+                    if (meshCrank.geometry) meshCrank.geometry.dispose();
+                    if (meshRocker.geometry) meshRocker.geometry.dispose();
+                    if (meshCoupler.geometry) meshCoupler.geometry.dispose();
+                    if (meshCouplerExt.geometry) meshCouplerExt.geometry.dispose();
+                    if (meshCouplerExt2.geometry) meshCouplerExt2.geometry.dispose();
+
+                    const distAP = Math.hypot(bestMech.P0.x - bestMech.A0.x, bestMech.P0.y - bestMech.A0.y);
+                    
+                    meshGround.geometry = createLinkGeo(l_ground, 18, 6, 4.5);
+                    meshCrank.geometry = createLinkGeo(bestMech.L_crank, 14, 8, 4.5);
+                    meshRocker.geometry = createLinkGeo(bestMech.L_rocker, 14, 8, 4.5);
+                    meshCoupler.geometry = createLinkGeo(bestMech.L_coupler, 14, 8, 4.5);
+                    meshCouplerExt.geometry = createLinkGeo(distAP, 10, 6, 4.5);
+                    meshCouplerExt2.geometry = createLinkGeo(bestMech.rp, 10, 6, 4.5);
+
+                } else {
+                    statusEl.innerText = `Failure: Evaluated over 2.6M permutations. No physical geometry found.`;
+                    statusEl.style.color = "#ef4444";
+                }
+                document.getElementById('optimize').disabled = false;
+                render();
+            };
+        }
+
+        // ============================================================================
+        // GRAPHICAL MATH & DEFECT DETECTION
+        // ============================================================================
+        function getMidnormal(p1, p2) {
+            let mx = (p1.x + p2.x)/2, my = (p1.y + p2.y)/2, dx = p2.x - p1.x, dy = p2.y - p1.y;
+            return { p: {x: mx, y: my}, d: {x: -dy, y: dx} };
+        }
+        function projectToLine(pt, line) {
+            let v = { x: pt.x - line.p.x, y: pt.y - line.p.y };
+            let t = (v.x * line.d.x + v.y * line.d.y) / (line.d.x*line.d.x + line.d.y*line.d.y);
+            return { x: line.p.x + t * line.d.x, y: line.p.y + t * line.d.y };
+        }
+        function intersectCircles(c1, r1, c2, r2) {
+            let dx = c2.x - c1.x, dy = c2.y - c1.y, d = Math.hypot(dx, dy);
+            if (d > r1 + r2 || d < Math.abs(r1 - r2) || d === 0) return null;
+            let a = (r1*r1 - r2*r2 + d*d) / (2*d), h = Math.sqrt(Math.max(0, r1*r1 - a*a));
+            let px = c1.x + a * dx / d, py = c1.y + a * dy / d;
+            return [ { x: px + h * dy / d, y: py - h * dx / d }, { x: px - h * dy / d, y: py + h * dx / d } ];
+        }
+        function mapPoint(Ps, As, Pt, At, ptToMap) {
+            let th1 = Math.atan2(As.y - Ps.y, As.x - Ps.x), th2 = Math.atan2(At.y - Pt.y, At.x - Pt.x);
+            let dTh = th2 - th1, dx = ptToMap.x - Ps.x, dy = ptToMap.y - Ps.y;
+            return { x: Pt.x + (dx * Math.cos(dTh) - dy * Math.sin(dTh)), y: Pt.y + (dx * Math.sin(dTh) + dy * Math.cos(dTh)) };
+        }
+        function intersectLines(m1, n1, m2, n2) {
+            let A1 = n1.x, B1 = n1.y, C1 = m1.x*n1.x + m1.y*n1.y;
+            let A2 = n2.x, B2 = n2.y, C2 = m2.x*n2.x + m2.y*n2.y;
+            let det = A1*B2 - A2*B1; if (Math.abs(det) < 1e-6) return null;
+            return { x: (C1*B2 - C2*B1)/det, y: (A1*C2 - A2*C1)/det };
+        }
+
+        function evaluateSweep(mech, branch) {
+            mech.branch = branch;
+            let dists = [Infinity, Infinity, Infinity, Infinity];
+            for(let th = -180; th <= 180; th += 2) {
+                let pos = getPosUI(mech, th * Math.PI/180);
+                if(pos) {
+                    for(let k=0; k<4; k++) dists[k] = Math.min(dists[k], Math.hypot(pos.P.x - targets[k].x, pos.P.y - targets[k].y));
+                }
+            }
+            return dists.reduce((a,b) => a+b, 0);
+        }
+        
+        function calculateGraphicalRest(hc_pt) {
+            if (!gA_i || !gA_j) return null;
+            let uIdx = [0,1,2,3].find(x => x !== gSelectedTargetIndices[0] && x !== gSelectedTargetIndices[1]);
+            let vIdx = [0,1,2,3].find(x => x !== gSelectedTargetIndices[0] && x !== gSelectedTargetIndices[1] && x !== uIdx);
+            
+            let R_HC = Math.hypot(hc_pt.x - gA_i.x, hc_pt.y - gA_i.y);
+            let intU = intersectCircles(targets[uIdx], g_r, hc_pt, R_HC);
+            let intV = intersectCircles(targets[vIdx], g_r, hc_pt, R_HC);
+            if(!intU || !intV) return null;
+
+            let bestError = Infinity;
+            let bestParams = null;
+
+            for(let u = 0; u < 2; u++) {
+                for(let v = 0; v < 2; v++) {
+                    let tempA_u = intU[u], tempA_v = intV[v];
+                    let tempP = mapPoint(targets[uIdx], tempA_u, targets[gSelectedTargetIndices[0]], gA_i, gHR);
+                    let tempQ = mapPoint(targets[vIdx], tempA_v, targets[gSelectedTargetIndices[0]], gA_i, gHR);
+
+                    let m1 = {x: (tempP.x + gHR.x)/2, y: (tempP.y + gHR.y)/2}, n1 = {x: tempP.x - gHR.x, y: tempP.y - gHR.y};
+                    let m2 = {x: (tempQ.x + gHR.x)/2, y: (tempQ.y + gHR.y)/2}, n2 = {x: tempQ.x - gHR.x, y: tempQ.y - gHR.y};
+                    let tempB_i = intersectLines(m1, n1, m2, n2);
+
+                    if(!tempB_i) continue;
+
+                    let mech = {
+                        HC: hc_pt, HR: gHR,
+                        L_crank: Math.hypot(hc_pt.x - gA_i.x, hc_pt.y - gA_i.y),
+                        L_rocker: Math.hypot(gHR.x - tempB_i.x, gHR.y - tempB_i.y),
+                        L_coupler: Math.hypot(gA_i.x - tempB_i.x, gA_i.y - tempB_i.y),
+                        Z2_start_angle: Math.atan2(gA_i.y - hc_pt.y, gA_i.x - hc_pt.x),
+                        B0: gA_i, A0: tempB_i, P0: targets[gSelectedTargetIndices[0]]
+                    };
+
+                    mech.rp = Math.hypot(mech.P0.x - gA_i.x, mech.P0.y - gA_i.y);
+                    mech.deltap = Math.atan2(mech.P0.y - gA_i.y, mech.P0.x - gA_i.x) - Math.atan2(tempB_i.y - gA_i.y, tempB_i.x - gA_i.x);
+
+                    let err = Math.min(evaluateSweep(mech, 1), evaluateSweep(mech, -1));
+                    if(err < bestError){
+                        bestError = err;
+                        bestParams = {A_u: tempA_u, A_v: tempA_v, P: tempP, Q: tempQ, B_i: tempB_i, mech: mech, err: err};
+                    }
+                }
+            }
+            if (bestParams && bestParams.err < 50) return bestParams; 
+            return null;
+        }
+
+        function findIdealHC() {
+            if (!gA_i || !gA_j) return null;
+            let mn = getMidnormal(gA_i, gA_j);
+            let len = Math.hypot(mn.d.x, mn.d.y);
+            if (len < 0.001) return null;
+            let nx = mn.d.x / len, ny = mn.d.y / len;
+
+            let bestHC = null;
+            let bestErr = Infinity;
+            let bestParams = null;
+
+            for (let t = -1500; t <= 1500; t += 20) {
+                let testHC = { x: mn.p.x + t * nx, y: mn.p.y + t * ny };
+                let params = calculateGraphicalRest(testHC);
+                if (params && params.err < bestErr) {
+                    bestErr = params.err;
+                    bestHC = testHC;
+                    bestParams = params;
+                }
+            }
+            if (bestHC) return { hc: bestHC, params: bestParams };
+            return null;
+        }
+
+        // ============================================================================
+        // RENDERING
+        // ============================================================================
+        let pulseAnim = 0;
+        function drawLine(p1, p2, color, dash=[]) { ctx.beginPath(); ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); ctx.setLineDash([]); }
+        function drawCircle(c, r, color, dash=[]) { ctx.beginPath(); ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.arc(c.x, c.y, r, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]); }
+        function drawPt(pt, label, color) { ctx.beginPath(); ctx.fillStyle = color; ctx.arc(pt.x, pt.y, 4/viewScale, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = "white"; ctx.font = `bold ${12/viewScale}px sans-serif`; ctx.fillText(label, pt.x+5/viewScale, pt.y-5/viewScale); }
+
+        function render() {
+            if (is3DMode) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height); 
+            ctx.save(); ctx.translate(offsetX, offsetY); ctx.scale(viewScale, viewScale);
+            
+            ctx.strokeStyle = "rgba(0,0,0,0.05)"; ctx.lineWidth = 1 / viewScale; 
+            const startX = -offsetX / viewScale, endX = startX + canvas.width / viewScale;
+            const startY = -offsetY / viewScale, endY = startY + canvas.height / viewScale;
+            for(let i = Math.floor(startX / 30) * 30; i <= endX; i += 30) { ctx.beginPath(); ctx.moveTo(i, startY); ctx.lineTo(i, endY); ctx.stroke(); }
+            for(let i = Math.floor(startY / 30) * 30; i <= endY; i += 30) { ctx.beginPath(); ctx.moveTo(startX, i); ctx.lineTo(endX, i); ctx.stroke(); }
+
+            targets.forEach((pt, i) => { 
+                if (currentMode === "FALLBACK" && i === 3) {
+                    ctx.fillStyle = "#ef4444"; 
+                } 
+                else if (isGraphicalMode && gSelectedTargetIndices.includes(i) && !bestMech) {
+                    ctx.fillStyle = "#f59e0b";
+                } else {
+                    ctx.fillStyle = "#10b981"; 
+                }
+                
+                ctx.beginPath(); ctx.arc(pt.x, pt.y, 6 / viewScale, 0, Math.PI*2); ctx.fill(); 
+                if (document.getElementById('showLabels').checked) { ctx.font = `bold ${12 / viewScale}px sans-serif`; ctx.fillText("P"+(i+1), pt.x + (8/viewScale), pt.y - (8/viewScale)); }
+            });
+
+            if (isGraphicalMode && gSelectedTargetIndices.length === 2 && !bestMech) {
+                let p_i = targets[gSelectedTargetIndices[0]], p_j = targets[gSelectedTargetIndices[1]];
+                drawLine(p_i, p_j, "#94a3b8", [3,3]);
+
+                let mn1 = getMidnormal(p_i, p_j);
+                drawLine({x: mn1.p.x - mn1.d.x*10000, y: mn1.p.y - mn1.d.y*10000}, {x: mn1.p.x + mn1.d.x*10000, y: mn1.p.y + mn1.d.y*10000}, "#94a3b8", [5,5]);
+                
+                if(gState === 2 && mouseGhostPoint) drawPt(mouseGhostPoint, "HR", "rgba(245, 158, 11, 0.5)");
+                
+                if(gHR) {
+                    drawPt(gHR, "c"+(gSelectedTargetIndices[0]+1)+(gSelectedTargetIndices[1]+1)+" (HR)", "#f59e0b");
+                    if(gState >= 3) { 
+                        drawCircle(gHR, gR, "rgba(245, 158, 11, 0.8)");
+                        if (!gA_i) {
+                            ctx.fillStyle = "#ef4444"; ctx.font = `bold ${16/viewScale}px sans-serif`;
+                            ctx.fillText("Radii mismatch: Inner 'r' arcs must intersect Outer 'R' circle.", (-offsetX + 20)/viewScale, (-offsetY + 40)/viewScale);
+                        } else {
+                            drawCircle(p_i, g_r, "rgba(56, 189, 248, 0.5)", [2,4]); drawCircle(p_j, g_r, "rgba(56, 189, 248, 0.5)", [2,4]);
+                        }
+                    }
+                    if(gA_i && gA_j) {
+                        drawPt(gA_i, "A"+(gSelectedTargetIndices[0]+1), "#38bdf8"); drawPt(gA_j, "A"+(gSelectedTargetIndices[1]+1), "#38bdf8");
+                        drawLine(gA_i, gA_j, "#94a3b8", [3,3]);
+
+                        let mn2 = getMidnormal(gA_i, gA_j);
+                        drawLine({x: mn2.p.x - mn2.d.x*10000, y: mn2.p.y - mn2.d.y*10000}, {x: mn2.p.x + mn2.d.x*10000, y: mn2.p.y + mn2.d.y*10000}, "#94a3b8", [5,5]);
+                        
+                        let uIdx = [0,1,2,3].find(x => x !== gSelectedTargetIndices[0] && x !== gSelectedTargetIndices[1]);
+                        let vIdx = [0,1,2,3].find(x => x !== gSelectedTargetIndices[0] && x !== gSelectedTargetIndices[1] && x !== uIdx);
+                        
+                        if(gState === 3) {
+                            if (isHCValid && suggestedHC) {
+                                let pulseR = 8 + 3*Math.sin(pulseAnim); pulseAnim += 0.1;
+                                ctx.beginPath(); ctx.fillStyle = "rgba(16, 185, 129, 0.3)"; ctx.arc(suggestedHC.x, suggestedHC.y, pulseR/viewScale, 0, Math.PI*2); ctx.fill();
+                                drawPt(suggestedHC, "HC (Ideal Found!)", "#10b981");
+                                drawCircle(suggestedHC, Math.hypot(suggestedHC.x - gA_i.x, suggestedHC.y - gA_i.y), "rgba(16, 185, 129, 0.4)", [4,4]);
+                                
+                                ctx.fillStyle = "#10b981"; ctx.font = `bold ${16/viewScale}px sans-serif`;
+                                ctx.fillText("Ideal HC Found! Click the green dot to lock.", (-offsetX + 20)/viewScale, (-offsetY + 40)/viewScale);
+                            } else {
+                                ctx.fillStyle = "#ef4444"; ctx.font = `bold ${16/viewScale}px sans-serif`;
+                                ctx.fillText("No valid HC for current R and r. Try adjusting the sliders.", (-offsetX + 20)/viewScale, (-offsetY + 40)/viewScale);
+                            }
+                        }
+                        
+                        if(gState === 4 && gHC) {
+                            drawPt(gHC, "a"+(gSelectedTargetIndices[0]+1)+(gSelectedTargetIndices[1]+1)+" (HC)", "#10b981");
+                            let R_HC = Math.hypot(gHC.x - gA_i.x, gHC.y - gA_i.y);
+                            drawCircle(gHC, R_HC, "#10b981");
+                            
+                            drawPt(gA_u, "A"+(uIdx+1), "#38bdf8"); drawPt(gA_v, "A"+(vIdx+1), "#38bdf8");
+                            drawPt(gP, "p", "#ef4444"); drawPt(gQ, "q", "#ef4444");
+                            drawLine(gP, gHR, "rgba(239, 68, 68, 0.5)"); drawLine(gQ, gHR, "rgba(239, 68, 68, 0.5)");
+                            drawPt(gB_i, "B"+(gSelectedTargetIndices[0]+1), "#8b5cf6");
+                            
+                            ctx.strokeStyle = "#334155"; ctx.lineWidth = 3/viewScale; ctx.beginPath();
+                            ctx.moveTo(gHC.x, gHC.y); ctx.lineTo(gA_i.x, gA_i.y); ctx.lineTo(gB_i.x, gB_i.y); ctx.lineTo(gHR.x, gHR.y); ctx.stroke();
+                            ctx.fillStyle = "rgba(245, 158, 11, 0.4)"; ctx.strokeStyle = "#d97706";
+                            ctx.beginPath(); ctx.moveTo(gA_i.x, gA_i.y); ctx.lineTo(gB_i.x, gB_i.y); ctx.lineTo(p_i.x, p_i.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            if (bestMech) {
+                let validAnglesA = [], validAnglesB = [], started = false;
+                ctx.beginPath(); ctx.strokeStyle = "rgba(56, 189, 248, 0.4)"; ctx.lineWidth = 3 / viewScale;
+                for (let i = 0; i <= 360; i++) {
+                    let p = getPosUI(bestMech, i * Math.PI / 180);
+                    if (p) { 
+                        if (document.getElementById('showPath').checked) { !started ? ctx.moveTo(p.P.x, p.P.y) : ctx.lineTo(p.P.x, p.P.y); }
+                        started = true; validAnglesA.push(Math.atan2(p.A.y - bestMech.HR.y, p.A.x - bestMech.HR.x)); validAnglesB.push(Math.atan2(p.B.y - bestMech.HC.y, p.B.x - bestMech.HC.x));
+                    } else started = false;
+                } 
+                if (document.getElementById('showPath').checked) ctx.stroke();
+                
+                let sweepA = getSweepFromGap(validAnglesA), sweepB = getSweepFromGap(validAnglesB);
+                ctx.fillStyle = "rgba(56, 189, 248, 0.15)"; ctx.strokeStyle = "rgba(56, 189, 248, 0.4)"; ctx.lineWidth = 1 / viewScale;
+                if (document.getElementById('showRockerTracing').checked && sweepA) {
+                    ctx.beginPath();
+                    if (sweepA.isFull) { ctx.arc(bestMech.HR.x, bestMech.HR.y, bestMech.L_rocker, 0, Math.PI * 2, false); }
+                    else { ctx.moveTo(bestMech.HR.x, bestMech.HR.y); ctx.arc(bestMech.HR.x, bestMech.HR.y, bestMech.L_rocker, sweepA.startAngle, sweepA.endAngle, false); }
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+                if (document.getElementById('showCrankTracing').checked && sweepB) {
+                    ctx.beginPath();
+                    if (sweepB.isFull) { ctx.arc(bestMech.HC.x, bestMech.HC.y, bestMech.L_crank, 0, Math.PI * 2, false); }
+                    else { ctx.moveTo(bestMech.HC.x, bestMech.HC.y); ctx.arc(bestMech.HC.x, bestMech.HC.y, bestMech.L_crank, sweepB.startAngle, sweepB.endAngle, false); }
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+
+                const pos = getPosUI(bestMech, currentTheta);
+                if (pos) {
+                    document.getElementById('coord-live').innerHTML = `A (Rocker): <span class="live-val">(${pos.A.x.toFixed(1)}, ${pos.A.y.toFixed(1)})</span><br>B (Crank): <span class="live-val">(${pos.B.x.toFixed(1)}, ${pos.B.y.toFixed(1)})</span>`;
+                    ctx.strokeStyle = "#334155"; ctx.lineWidth = 5 / viewScale; ctx.lineCap = "round"; ctx.beginPath();
+                    ctx.moveTo(bestMech.HC.x, bestMech.HC.y); ctx.lineTo(pos.B.x, pos.B.y); ctx.lineTo(pos.A.x, pos.A.y); ctx.lineTo(bestMech.HR.x, bestMech.HR.y); ctx.stroke();
+                    ctx.fillStyle = "rgba(245, 158, 11, 0.4)"; ctx.strokeStyle = "#d97706"; ctx.lineWidth = 2 / viewScale;
+                    ctx.beginPath(); ctx.moveTo(pos.B.x, pos.B.y); ctx.lineTo(pos.A.x, pos.A.y); ctx.lineTo(pos.P.x, pos.P.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = "#1e293b"; 
+                    [{x: bestMech.HC.x, y: bestMech.HC.y, label: "HC"}, {x: bestMech.HR.x, y: bestMech.HR.y, label: "HR"}, {x: pos.A.x, y: pos.A.y, label: "A"}, {x: pos.B.x, y: pos.B.y, label: "B"}].forEach(j => { 
+                        ctx.beginPath(); ctx.arc(j.x, j.y, 5 / viewScale, 0, Math.PI*2); ctx.fill(); 
+                        if (document.getElementById('showLabels').checked) {
+                            ctx.font = `bold ${14 / viewScale}px sans-serif`; ctx.strokeStyle = "white"; ctx.lineWidth = 3 / viewScale;
+                            ctx.strokeText(j.label, j.x - (18/viewScale), j.y + (22/viewScale)); ctx.fillText(j.label, j.x - (18/viewScale), j.y + (22/viewScale));
+                        }
+                    });
+                    ctx.fillStyle = "#3b82f6"; ctx.beginPath(); ctx.arc(pos.P.x, pos.P.y, 6 / viewScale, 0, Math.PI*2); ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        // ============================================================================
+        // EVENT LISTENERS 
+        // ============================================================================
+        const configToggleTrack = document.getElementById('configToggleTrack');
+        const configToggleSlider = document.getElementById('configToggleSlider');
+        const optConfig1 = document.getElementById('optConfig1');
+        const optConfig2 = document.getElementById('optConfig2');
+
+        configToggleTrack.onclick = function() {
+            if (!bestMech) return;
+            if (bestMech.branch === 1) {
+                bestMech.branch = -1;
+                configToggleSlider.classList.add('is-right');
+                optConfig1.classList.remove('active');
+                optConfig2.classList.add('active');
+            } else {
+                bestMech.branch = 1;
+                configToggleSlider.classList.remove('is-right');
+                optConfig2.classList.remove('active');
+                optConfig1.classList.add('active');
+            }
+            render();
+        };
+
+        function updateRadiiAndArcs() {
+            if (gState < 3) return;
+            gR = parseFloat(document.getElementById('gRadiusR').value);
+            g_r = parseFloat(document.getElementById('gRadius_r').value);
+            
+            let intI = intersectCircles(targets[gSelectedTargetIndices[0]], g_r, gHR, gR);
+            let intJ = intersectCircles(targets[gSelectedTargetIndices[1]], g_r, gHR, gR);
+            
+            if(intI && intJ) {
+                gA_i = intI[0]; gA_j = intJ[0];
+                let ideal = findIdealHC();
+                if (ideal) { suggestedHC = ideal.hc; gBestParams = ideal.params; isHCValid = true; } 
+                else { suggestedHC = null; gBestParams = null; isHCValid = false; }
+            } else {
+                gA_i = null; gA_j = null; suggestedHC = null; gBestParams = null; isHCValid = false;
+            }
+        }
+
+        document.getElementById('gRadiusR').addEventListener('input', () => { updateRadiiAndArcs(); render(); });
+        document.getElementById('gRadius_r').addEventListener('input', () => { updateRadiiAndArcs(); render(); });
+
+        document.getElementById('btnGenerateGraphical').onclick = () => {
+            if (!bestMechPreview) return;
+            bestMech = bestMechPreview;
+
+            // UI Mode shift FIRST so the toggle doesn't get wiped 
+            currentTheta = bestMech.Z2_start_angle; currentMode = "EXACT";
+            synthToggleTrack.click(); 
+            
+            // Check for circuit defects visually by evaluating both configurations
+            let err1 = evaluateSweep(bestMech, 1);
+            let err2 = evaluateSweep(bestMech, -1);
+            
+            if (err1 > 15 && err2 > 15) {
+                document.getElementById('configToggleContainer').style.display = 'block';
+                bestMech.branch = 1; 
+                configToggleSlider.classList.remove('is-right');
+                optConfig2.classList.remove('active');
+                optConfig1.classList.add('active');
+            } else {
+                document.getElementById('configToggleContainer').style.display = 'none';
+                bestMech.branch = (err1 < err2) ? 1 : -1;
+            }
+
+            document.getElementById('play').disabled = false; 
+            document.getElementById('autoScale').disabled = false; 
+            document.getElementById('viewToggleContainer').classList.remove('disabled');
+            
+            document.getElementById('coord-ground').innerHTML = `HC: (${bestMech.HC.x.toFixed(1)}, ${bestMech.HC.y.toFixed(1)})<br>HR: (${bestMech.HR.x.toFixed(1)}, ${bestMech.HR.y.toFixed(1)})`;
+            let S = Math.min(bestMech.L_crank, bestMech.L_rocker, bestMech.L_coupler, Math.hypot(bestMech.HC.x-bestMech.HR.x, bestMech.HC.y-bestMech.HR.y));
+            let L = Math.max(bestMech.L_crank, bestMech.L_rocker, bestMech.L_coupler, Math.hypot(bestMech.HC.x-bestMech.HR.x, bestMech.HC.y-bestMech.HR.y));
+            let PQ = bestMech.L_crank + bestMech.L_rocker + bestMech.L_coupler + Math.hypot(bestMech.HC.x-bestMech.HR.x, bestMech.HC.y-bestMech.HR.y) - S - L;
+            document.getElementById('linkage-props').innerHTML = `Ground: <span class="live-val">${Math.hypot(bestMech.HC.x-bestMech.HR.x, bestMech.HC.y-bestMech.HR.y).toFixed(1)}</span><br>Coupler: <span class="live-val">${bestMech.L_coupler.toFixed(1)}</span><br>Driving: <span class="live-val">${bestMech.L_crank.toFixed(1)}</span><br>Driven: <span class="live-val">${bestMech.L_rocker.toFixed(1)}</span><br>Grashof: <span class="live-val" style="color:#8b5cf6">${S+L <= PQ+0.001 ? "Grashof" : "Non-Grashof"}</span>`;
+            document.getElementById('coord-error').innerHTML = `Mode: <span style="color:#10b981; font-weight:bold;">Kinematic Graphical</span>`;
+            
+            const l_ground = Math.hypot(bestMech.HC.x - bestMech.HR.x, bestMech.HC.y - bestMech.HR.y);
+            meshGround.geometry = createLinkGeo(l_ground, 18, 6, 4.5); meshCrank.geometry = createLinkGeo(bestMech.L_crank, 14, 8, 4.5);
+            meshRocker.geometry = createLinkGeo(bestMech.L_rocker, 14, 8, 4.5); meshCoupler.geometry = createLinkGeo(bestMech.L_coupler, 14, 8, 4.5);
+            meshCouplerExt.geometry = createLinkGeo(Math.hypot(bestMech.P0.x - bestMech.A0.x, bestMech.P0.y - bestMech.A0.y), 10, 6, 4.5);
+            meshCouplerExt2.geometry = createLinkGeo(bestMech.rp, 10, 6, 4.5);
+             
+            document.getElementById('autoScale').click();
+        };
+
+        // AutoScale Failsafe Fix: Include Target points and Hinges unconditionally so ViewScale never becomes NaN
+        document.getElementById('autoScale').onclick = function() {
+            if (!bestMech) return;
+            if (is3DMode) {
+                orbitState.targetX = (bestMech.HC.x + bestMech.HR.x) / 2; orbitState.targetY = (bestMech.HC.y + bestMech.HR.y) / 2;
+                orbitState.radius = Math.max(300, Math.max(Math.abs(bestMech.HC.x - bestMech.HR.x), Math.abs(bestMech.HC.y - bestMech.HR.y), bestMech.L_crank * 2, bestMech.L_rocker * 2) * 2.5);
+                orbitState.theta = 0; orbitState.phi = -0.5; 
+            } else {
+                let minX = Math.min(bestMech.HC.x, bestMech.HR.x, ...targets.map(t=>t.x));
+                let maxX = Math.max(bestMech.HC.x, bestMech.HR.x, ...targets.map(t=>t.x));
+                let minY = Math.min(bestMech.HC.y, bestMech.HR.y, ...targets.map(t=>t.y));
+                let maxY = Math.max(bestMech.HC.y, bestMech.HR.y, ...targets.map(t=>t.y));
+                
+                const expand = (p) => { if (!p) return; const X = [p.A.x, p.B.x, p.P.x], Y = [p.A.y, p.B.y, p.P.y]; minX = Math.min(minX, ...X); maxX = Math.max(maxX, ...X); minY = Math.min(minY, ...Y); maxY = Math.max(maxY, ...Y); };
+                for (let i = 0; i <= 360; i += 5) expand(getPosUI(bestMech, i * Math.PI / 180));
+                
+                const w = Math.max(10, maxX - minX);
+                const h = Math.max(10, maxY - minY);
+                const scaleX = canvas.width / (w * 1.3), scaleY = canvas.height / (h * 1.3);
+                
+                viewScale = Math.max(0.2, Math.min(Math.min(scaleX, scaleY), 4));
+                offsetX = (canvas.width / 2) - ((minX + maxX)/2 * viewScale); offsetY = (canvas.height / 2) - ((minY + maxY)/2 * viewScale);
+                document.getElementById('zoomSlider').value = viewScale; document.getElementById('zoomVal').innerText = Math.round(viewScale * 100) + '%';
+                render();
+            }
+        };
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (is3DMode) return;
+            const rect = canvas.getBoundingClientRect(); const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+            const rawX = (mouseX - offsetX) / viewScale, rawY = (mouseY - offsetY) / viewScale;
+            
+            if (targets.length < 4) {
+                targets.push({ x: rawX, y: rawY }); 
+                let html = ""; for(let i=0; i<4; i++) html += targets[i] ? `P${i+1}: (${targets[i].x.toFixed(1)}, ${targets[i].y.toFixed(1)})<br>` : `P${i+1}: --<br>`;
+                document.getElementById('coord-targets').innerHTML = html;
+                if (targets.length === 4) { document.getElementById('optimize').disabled = false; if(isGraphicalMode) { gState=1; setGStep(1); } else runOptimizer(); }
+                render();
+            } else if (isGraphicalMode) {
+                if(gState === 1) {
+                    let closest = -1, minDist = 15/viewScale;
+                    targets.forEach((pt, i) => { let d = Math.hypot(pt.x-rawX, pt.y-rawY); if(d < minDist) { minDist = d; closest = i; } });
+                    if(closest !== -1 && !gSelectedTargetIndices.includes(closest)) {
+                        gSelectedTargetIndices.push(closest);
+                        if(gSelectedTargetIndices.length === 2) { gState = 2; setGStep(2); }
+                    }
+                } else if(gState === 2) { 
+                    gHR = mouseGhostPoint; 
+                    gState = 3; setGStep(3); 
+                    updateRadiiAndArcs();
+                } else if(gState === 3) {
+                    if (isHCValid && suggestedHC) {
+                        let d = Math.hypot(rawX - suggestedHC.x, rawY - suggestedHC.y);
+                        if (d < 25/viewScale) {
+                            gHC = suggestedHC;
+                            gB_i = gBestParams.B_i;
+                            gP = gBestParams.P; gQ = gBestParams.Q;
+                            gA_u = gBestParams.A_u; gA_v = gBestParams.A_v;
+                            bestMechPreview = gBestParams.mech;
+                            gState = 4; setGStep(4);
+                        }
+                    }
+                }
+                render();
+            } else { isPanning = true; startPanX = mouseX - offsetX; startPanY = mouseY - offsetY; canvas.style.cursor = 'grabbing'; }
+        });
+
+        canvas.addEventListener('mousemove', (e) => { 
+            if (is3DMode) return;
+            const rect = canvas.getBoundingClientRect(); 
+            if (isPanning) { offsetX = (e.clientX - rect.left) - startPanX; offsetY = (e.clientY - rect.top) - startPanY; render(); return; }
+            if (isGraphicalMode) {
+                const rawX = ((e.clientX - rect.left) - offsetX) / viewScale, rawY = ((e.clientY - rect.top) - offsetY) / viewScale;
+                if (gState === 2 && gSelectedTargetIndices.length === 2) { 
+                    mouseGhostPoint = projectToLine({x:rawX, y:rawY}, getMidnormal(targets[gSelectedTargetIndices[0]], targets[gSelectedTargetIndices[1]])); 
+                    render(); 
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => { isPanning = false; canvas.style.cursor = targets.length >= 4 && !isGraphicalMode ? 'grab' : 'crosshair'; });
+        canvas.addEventListener('mouseleave', () => { isPanning = false; canvas.style.cursor = targets.length >= 4 && !isGraphicalMode ? 'grab' : 'crosshair'; });
+        canvas.addEventListener('wheel', (e) => { e.preventDefault(); const newScale = Math.max(0.2, Math.min(viewScale * (e.deltaY > 0 ? 0.9 : 1.1), 4)); const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top; offsetX = mx - (mx - offsetX) * (newScale / viewScale); offsetY = my - (my - offsetY) * (newScale / viewScale); viewScale = newScale; document.getElementById('zoomSlider').value = viewScale; document.getElementById('zoomVal').innerText = Math.round(viewScale * 100) + '%'; render(); });
+
+        document.getElementById('optimize').onclick = () => { canvas.style.cursor = 'grab'; runOptimizer(); };
+        document.getElementById('play').onclick = function() { isPlaying = !isPlaying; this.innerText = isPlaying ? "Pause Animation" : "Play Animation"; if (isPlaying) (function loop(){if(!isPlaying)return; const nT = currentTheta + (0.05 * parseFloat(document.getElementById('animSpeed').value) * animDirection); if (!getPosUI(bestMech, nT)) animDirection *= -1; else currentTheta = nT; render(); requestAnimationFrame(loop);})(); };
+        document.getElementById('reset').onclick = () => location.reload(); 
+        
+        ['animSpeed','zoomSlider'].forEach(id => document.getElementById(id).addEventListener('input', e => { 
+            if(id === 'animSpeed') document.getElementById('speedVal').innerText = parseFloat(e.target.value).toFixed(1) + 'x';
+            if(id === 'zoomSlider') { const ns = parseFloat(e.target.value); offsetX = canvas.width/2 - (canvas.width/2 - offsetX)*(ns/viewScale); offsetY = canvas.height/2 - (canvas.height/2 - offsetY)*(ns/viewScale); viewScale = ns; document.getElementById('zoomVal').innerText = Math.round(viewScale*100)+'%'; }
+            render(); 
+        }));
+        ['showPath','showLabels','showCrankTracing','showRockerTracing'].forEach(id => document.getElementById(id).addEventListener('change', render));
+
+        function loop3D() {
+            requestAnimationFrame(loop3D); if (!is3DMode) return;
+            const tx = orbitState.targetX, ty = -orbitState.targetY, r = orbitState.radius;
+            camera.position.set(tx + r * Math.cos(orbitState.phi) * Math.sin(orbitState.theta), ty + r * Math.sin(orbitState.phi), r * Math.cos(orbitState.phi) * Math.cos(orbitState.theta));
+            camera.lookAt(tx, ty, 0);
+            targets.forEach((pt, i) => { targetMeshes[i].position.set(pt.x, -pt.y, 30); targetMeshes[i].visible = true; }); for (let i = targets.length; i < 4; i++) targetMeshes[i].visible = false;
+            if (bestMech) {
+                const pos = getPosUI(bestMech, currentTheta);
+                if (pos) {
+                    update3DLink(meshGround, bestMech.HC.x, bestMech.HC.y, bestMech.HR.x, bestMech.HR.y, 0); update3DLink(meshCrank, bestMech.HC.x, bestMech.HC.y, pos.B.x, pos.B.y, 12);
+                    update3DLink(meshRocker, bestMech.HR.x, bestMech.HR.y, pos.A.x, pos.A.y, 12); update3DLink(meshCoupler, pos.B.x, pos.B.y, pos.A.x, pos.A.y, 24);
+                    update3DLink(meshCouplerExt, pos.A.x, pos.A.y, pos.P.x, pos.P.y, 24); update3DLink(meshCouplerExt2, pos.B.x, pos.B.y, pos.P.x, pos.P.y, 24);
+                    jointHC.position.set(bestMech.HC.x, -bestMech.HC.y, 6); jointHR.position.set(bestMech.HR.x, -bestMech.HR.y, 6);
+                    jointA.position.set(pos.A.x, -pos.A.y, 18); jointB.position.set(pos.B.x, -pos.B.y, 18); jointP.position.set(pos.P.x, -pos.P.y, 24);
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        
+        setInterval(render, 30);
+        loop3D(); 
+    </script>
+</body>
+</html>
